@@ -10,3 +10,4 @@ R/*_files
 .httr-oauth
 .DS_Store
 .quarto
+R/*_cache
