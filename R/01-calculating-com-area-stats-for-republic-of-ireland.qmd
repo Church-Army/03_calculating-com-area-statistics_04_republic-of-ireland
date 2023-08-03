@@ -1,0 +1,178 @@
+---
+title: "Calculating statistics for Scottish CoM"
+author: "Dave"
+format: html
+editor: visual
+---
+
+## Houskeeping
+
+### Libraries
+
+```{r libs}
+library(fs)
+library(here)
+library(stringr)
+library(purrr)
+library(vroom)
+library(dplyr)
+```
+
+## Calculate overlaps
+
+#### CoM Overlaps Data
+
+```{r lsadOverlaps}
+read_overlaps <- function(){
+  
+  overlap_files <-
+    dir_ls(here("com-sa-overlaps_republic-of-ireland"))
+  
+  names(overlap_files) <-
+    str_extract(overlap_files, "(?<=/)[^/]+(?=\\.csv)") |>
+    str_replace_all("-", "_")
+  
+  overlaps <- map(overlap_files, vroom, col_types = "cd")
+}
+
+
+overlaps <- read_overlaps()
+```
+
+#### Lsad census statistics
+
+```{r lsadStats}
+get_census_files = function(){
+ 
+  census_files <- dir_ls(here("census-data_republic-of-ireland"))
+  
+  area_code_file_regex <- 
+    str_c("(?<=/republic-of-ireland_).+(?=_sa_\\d{4})")
+
+  names(census_files) <- 
+    str_extract(census_files, area_code_file_regex) |> 
+    str_replace_all("-", "_")
+  
+  return(census_files)
+}
+
+census_files <- get_census_files()
+
+census_data <- map(census_files, readRDS)
+```
+
+### Preprocess data
+
+#### Filter unused soa/sa
+
+```{r filterUnused}
+used_sa <-
+  map(overlaps, pull, sa_2015_code) |> 
+  reduce(c) |> 
+  unique()
+
+
+census_data <- map(census_data, mutate,
+                   sa_2015_code = str_remove(sa_2015_code, "(?<=^)SA2017_"))
+census_data <- map(census_data, filter, sa_2015_code %in% used_sa)
+
+rm(used_sa)
+```
+
+### Join census data to overlap tables
+
+```{r joinOverlapData}
+overlaps <- 
+  map(overlaps,
+      \(x){
+        map(census_data, 
+            \(y){
+              left_join(x, y, by = c("sa_2015_code" = "sa_2015_code")) }) })
+```
+
+### Calulate com area stats
+
+```{r calculateComAreaStats}
+calculate_com_stats <- function(x, ratio_col){
+  
+  ratio_col <- enexpr(ratio_col)
+  
+  mutate(x,
+         across(
+           ## In every numeric column (except the 'ratio' column)
+           where(is.numeric) & !(!!ratio_col),
+           ## Multiply the numbers by the ratio numbers
+           \(y) y * !!ratio_col )) |> 
+    select(-!!ratio_col)
+}
+
+com_stats <- 
+  map(overlaps, map, calculate_com_stats, ratio_sa_intersection_com)
+```
+
+### Create CoM Summaries
+
+```{r createComSummaries}
+com_summaries <- 
+  imap(com_stats, 
+       \(x,y){
+         map(x,
+             \(z){
+               ungroup(z) |>
+                 summarise(across(where(is.numeric), sum)) |> 
+                 mutate(com = y) |> 
+                 relocate(com) }) })
+
+com_summaries <- pmap(com_summaries, list)
+
+com_summaries <- map(com_summaries, reduce, rbind)
+```
+
+## Save data
+
+### save summaries
+
+```{r saveSummaries}
+com_census_data <- dir_create(here("com-census-data"))
+summaries_dir <- dir_create(com_census_data, "all-com-summaries")
+
+iwalk(com_summaries,
+     \(x, y){
+       file_name <- here(
+         summaries_dir,
+         str_c(
+           "irish-com_",
+           str_replace_all(y, "_", "-"),
+           "_2016.csv"))
+       
+       vroom_write(x, file_name, delim = ",")
+     })
+```
+
+### Save CoM Data
+
+```{r saveComData}
+com <-
+  names(com_stats) |> 
+  str_replace_all("_", "-")
+
+com_dirs <- dir_create(com_census_data, com)
+
+iwalk(com_stats,
+      \(com_data_list, com_name){
+        
+        iwalk(com_data_list,
+              \(stat_tibble, stat_name){
+                
+                                neat_com_name = str_replace_all(com_name, "_", "-")
+                neat_stat_name = str_replace_all(stat_name, "_", "-")
+                
+                save_path =
+                  str_c(com_census_data, "/", neat_com_name, "/",
+                        neat_stat_name, "_sa_2016.csv")
+                
+                vroom_write(
+                  stat_tibble,
+                  file = save_path,
+                  delim = ",") }) })
+```

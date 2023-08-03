@@ -1,0 +1,12 @@
+.Rproj.user
+com-census-data/*
+!com-census-data/all-com-summaries
+*.html
+R/*_files
+*.xlsx
+/.Rhistory
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto

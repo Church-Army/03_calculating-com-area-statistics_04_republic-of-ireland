@@ -1,0 +1,66 @@
+---
+title: "Make CoM Summary Percentage Tables"
+author: "Dave"
+format: html
+editor: visual
+---
+
+## Housekeeping
+
+### Libraries
+
+```{r libs}
+library(here)
+library(fs)
+library(vroom)
+library(dplyr)
+library(scales)
+library(stringr)
+library(purrr)
+```
+
+## Read tables
+
+```{r readData}
+summary_dir <- here("com-census-data", "all-com-summaries")
+
+summaries_files <-
+  dir_ls(summary_dir) |>
+  str_subset("percent", negate = TRUE)
+
+names(summaries_files) <- 
+  summaries_files |> 
+  str_extract("(?<=northern-irish-com_)[^/]+(?=\\.csv)") |> 
+  str_replace_all("-", "_")
+
+summaries <- map(summaries_files, vroom)
+```
+
+## Make percentage stats
+
+```{r makePercentageStats}
+summaries <- map(summaries, rowwise)
+
+summaries <- map(summaries,
+                 mutate,
+                 across(-com,
+                        \(x) x / sum(c_across(2:last_col())))
+                 )
+
+summaries <- map(summaries, ungroup)
+
+summaries <- map(summaries, mutate, across(-com, percent, 0.1))
+```
+
+## Save percentage tables
+
+```{r saveTables}
+walk2(summaries, summaries_files, 
+      \(x,y){
+        new_file_name <- 
+          str_remove(y, "\\.csv") |> 
+          str_c("_percentages.csv")
+        
+        vroom_write(x, new_file_name, ",")
+      })
+```
