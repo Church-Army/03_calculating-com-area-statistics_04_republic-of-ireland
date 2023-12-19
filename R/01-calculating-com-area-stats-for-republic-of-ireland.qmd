@@ -67,14 +67,12 @@ census_data <- map(census_files, readRDS)
 
 ```{r filterUnused}
 used_sa <-
-  map(overlaps, pull, sa_2015_code) |> 
+  map(overlaps, pull, sa_2022_code) |> 
   reduce(c) |> 
   unique()
 
 
-census_data <- map(census_data, mutate,
-                   sa_2015_code = str_remove(sa_2015_code, "(?<=^)SA2017_"))
-census_data <- map(census_data, filter, sa_2015_code %in% used_sa)
+census_data <- map(census_data, filter, sa_2022_code %in% used_sa)
 
 rm(used_sa)
 ```
@@ -87,7 +85,7 @@ overlaps <-
       \(x){
         map(census_data, 
             \(y){
-              left_join(x, y, by = c("sa_2015_code" = "sa_2015_code")) }) })
+              left_join(x, y, by = c("sa_2022_code" = "sa_2022_code")) }) })
 ```
 
 ### Calulate com area stats
@@ -143,7 +141,7 @@ iwalk(com_summaries,
          str_c(
            "irish-com_",
            str_replace_all(y, "_", "-"),
-           "_2016.csv"))
+           "_2022.csv"))
        
        vroom_write(x, file_name, delim = ",")
      })
@@ -169,7 +167,7 @@ iwalk(com_stats,
                 
                 save_path =
                   str_c(com_census_data, "/", neat_com_name, "/",
-                        neat_stat_name, "_sa_2016.csv")
+                        neat_stat_name, "_sa_2022.csv")
                 
                 vroom_write(
                   stat_tibble,
