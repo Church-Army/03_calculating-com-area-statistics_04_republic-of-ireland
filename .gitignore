@@ -11,3 +11,5 @@ R/*_files
 .DS_Store
 .quarto
 R/*_cache
+
+com-census-data/all-com-summaries/**_percentages.csv
